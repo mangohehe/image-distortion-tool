@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "name": "Default Pipeline",
+    "version": "1.0",
+    "created_at": "2025-11-12T15:55:04-08:00",
+    "description": "Simple optical distortion for testing"
+  },
+  "transforms": [
+    {
+      "id": "t1",
+      "type": "OpticalDistortion",
+      "category": "geometric",
+      "params": {
+        "distort_limit": 0.2,
+        "shift_limit": 0.1,
+        "p": 1.0
+      }
+    }
+  ],
+  "compose": {
+    "type": "Sequential"
+  }
+}

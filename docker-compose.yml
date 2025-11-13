@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  distortion-tool:
+    build: .
+    container_name: image-distortion-tool-phase1
+    ports:
+      - "8501:8501"
+      - "8502:8502"
+    volumes:
+      - ./workspace:/workspace
+    environment:
+      - PYTHONUNBUFFERED=1
+      - STREAMLIT_SERVER_MAX_UPLOAD_SIZE=200
+    restart: unless-stopped
+    mem_limit: 8g
+    cpus: 4

@@ -62,3 +62,16 @@ htmlcov/
 tmp/
 temp/
 *.tmp
+
+# Workspace (user data - ignored)
+workspace/input/images/*
+workspace/input/masks/*
+workspace/output/*
+workspace/backup_full_dataset/*
+!workspace/input/images/.gitkeep
+!workspace/input/masks/.gitkeep
+!workspace/output/.gitkeep
+
+# Keep progress monitor files
+!workspace/progress.html
+!workspace/serve_progress.py
