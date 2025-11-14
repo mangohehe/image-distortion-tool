@@ -19,9 +19,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY src/ ./src/
 COPY app.py .
+COPY entrypoint.sh .
 
-# Expose Streamlit port
-EXPOSE 8501
+# Make entrypoint executable
+RUN chmod +x entrypoint.sh
+
+# Expose Streamlit port and progress monitor port
+EXPOSE 8501 8502
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
@@ -30,5 +34,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 
-# Run Streamlit
-CMD ["streamlit", "run", "app.py", "--server.address", "0.0.0.0", "--server.port", "8501"]
+# Run entrypoint script
+CMD ["./entrypoint.sh"]

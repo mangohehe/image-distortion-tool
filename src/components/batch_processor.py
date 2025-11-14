@@ -217,60 +217,87 @@ class BatchProcessor:
                     self.logger.warning(f"Mask validation failed for {img_path}: {error_msg}")
                     mask = None
 
-        # Process each variant
+        # Process each variant (handle per-variant failures gracefully)
         outputs = []
+        variant_errors = []
+
         for i, variant_dir in enumerate(variant_dirs):
-            # Set seed for reproducibility
-            if self.random_seed is not None:
-                seed = self.random_seed + i
-                np.random.seed(seed)
-                random.seed(seed)
+            try:
+                # Set seed for reproducibility
+                if self.random_seed is not None:
+                    seed = self.random_seed + i
+                    np.random.seed(seed)
+                    random.seed(seed)
 
-            # Apply geometric transforms to both image and mask
-            aug_image = image.copy()
-            aug_mask = mask.copy() if mask is not None else None
+                # Apply geometric transforms to both image and mask
+                aug_image = image.copy()
+                aug_mask = mask.copy() if mask is not None else None
 
-            if geometric_pipeline:
-                if aug_mask is not None:
-                    result = geometric_pipeline(image=aug_image, mask=aug_mask)
-                    aug_image = result["image"]
-                    aug_mask = result["mask"]
-                else:
-                    aug_image = geometric_pipeline(image=aug_image)["image"]
+                if geometric_pipeline:
+                    if aug_mask is not None:
+                        result = geometric_pipeline(image=aug_image, mask=aug_mask)
+                        aug_image = result["image"]
+                        aug_mask = result["mask"]
+                    else:
+                        aug_image = geometric_pipeline(image=aug_image)["image"]
 
-            # Apply pixel-level transforms to image only
-            if pixel_pipeline:
-                aug_image = pixel_pipeline(image=aug_image)["image"]
+                # Apply pixel-level transforms to image only
+                if pixel_pipeline:
+                    aug_image = pixel_pipeline(image=aug_image)["image"]
 
-            # Save augmented image
-            output_img_path = variant_dir / "images" / img_path.name
-            aug_image_bgr = cv2.cvtColor(aug_image, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(str(output_img_path), aug_image_bgr)
+                # Save augmented image (apply transforms exactly as specified)
+                output_img_path = variant_dir / "images" / img_path.name
+                aug_image_bgr = cv2.cvtColor(aug_image, cv2.COLOR_RGB2BGR)
+                cv2.imwrite(str(output_img_path), aug_image_bgr)
 
-            # Save augmented mask
-            output_mask_path = None
-            if has_masks and aug_mask is not None:
-                mask_filename = img_path.stem + '.png'
-                output_mask_path = variant_dir / "masks" / mask_filename
-                cv2.imwrite(str(output_mask_path), aug_mask)
+                # Save augmented mask
+                output_mask_path = None
+                if has_masks and aug_mask is not None:
+                    mask_filename = img_path.stem + '.png'
+                    output_mask_path = variant_dir / "masks" / mask_filename
+                    cv2.imwrite(str(output_mask_path), aug_mask)
 
-            outputs.append({
-                "variant": variant_dir.name,
-                "image": str(output_img_path.relative_to(self.run_dir)),
-                "mask": str(output_mask_path.relative_to(self.run_dir)) if output_mask_path else None
-            })
+                outputs.append({
+                    "variant": variant_dir.name,
+                    "image": str(output_img_path.relative_to(self.run_dir)),
+                    "mask": str(output_mask_path.relative_to(self.run_dir)) if output_mask_path else None,
+                    "status": "success"
+                })
+            except Exception as e:
+                # Log variant failure but continue with other variants
+                self.logger.warning(f"Variant {i+1} ({variant_dir.name}) failed for {img_path.name}: {e}")
+                variant_errors.append(f"{variant_dir.name}: {str(e)}")
+                outputs.append({
+                    "variant": variant_dir.name,
+                    "image": None,
+                    "mask": None,
+                    "status": "error",
+                    "error": str(e)
+                })
 
         proc_end = datetime.now()
         processing_time_ms = (proc_end - proc_start).total_seconds() * 1000
 
-        return {
+        # Mark as success if ANY variant succeeded
+        successful_variants = sum(1 for o in outputs if o["status"] == "success")
+        overall_status = "success" if successful_variants > 0 else "error"
+
+        result = {
             "input_image": str(img_path),
             "input_mask": str(mask_path) if mask_path else None,
-            "status": "success",
+            "status": overall_status,
             "outputs": outputs,
+            "successful_variants": successful_variants,
+            "total_variants": len(variant_dirs),
             "processing_time_ms": processing_time_ms,
             "timestamp": datetime.now().isoformat()
         }
+
+        # Add error info if some variants failed
+        if variant_errors:
+            result["variant_errors"] = variant_errors
+
+        return result
 
     def _save_manifest(self, results: list[dict], has_masks: bool, duration: float) -> None:
         """Save processing manifest

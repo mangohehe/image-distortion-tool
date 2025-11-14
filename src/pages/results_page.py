@@ -113,7 +113,8 @@ def render():
 
                         # Apply mask overlay if enabled
                         if show_masks:
-                            distorted_mask_path = variant_dir / "masks" / (img_name.replace('.png', '.npy'))
+                            # Distorted masks are saved as .png (transformed masks)
+                            distorted_mask_path = variant_dir / "masks" / img_name
                             if distorted_mask_path.exists():
                                 mask = load_mask(distorted_mask_path)
                                 if mask is not None:

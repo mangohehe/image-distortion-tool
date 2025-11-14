@@ -35,6 +35,11 @@ def render():
     """Render configuration and processing page"""
     st.title("🖼️ Image Distortion Tool - Phase 1 MVP")
 
+    # Show import success message
+    if 'import_success' in st.session_state and st.session_state.import_success:
+        st.success(f"✅ Pipeline imported successfully! {len(st.session_state.pipeline.transforms)} transforms loaded. Scroll down to 'Batch Processing' to process images.")
+        st.session_state.import_success = False  # Clear flag
+
     # Initialize processing state in session
     if 'processing_thread' not in st.session_state:
         st.session_state.processing_thread = None
@@ -122,95 +127,116 @@ def render():
         st.session_state.pipeline = PipelineConfig()
         st.session_state.pipeline.metadata["name"] = "My Pipeline"
 
-    # Import pipeline from JSON
-    with st.sidebar.expander("📥 Import Pipeline", expanded=False):
-        uploaded_file = st.file_uploader(
-            "Upload Albumentations JSON",
-            type=['json'],
-            help="Upload an Albumentations pipeline JSON file (supports both native format and custom format)",
-            key="pipeline_upload"
-        )
+    # Import pipeline from JSON - only show if not already imported
+    if not st.session_state.get('pipeline_imported', False):
+        with st.sidebar.expander("📥 Import Pipeline", expanded=False):
+            uploaded_file = st.file_uploader(
+                "Upload Albumentations JSON",
+                type=['json'],
+                help="Upload an Albumentations pipeline JSON file (supports both native format and custom format)",
+                key="pipeline_upload"
+            )
 
-        if uploaded_file is not None:
-            try:
-                # Read and parse JSON
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
-                    tmp.write(uploaded_file.getvalue().decode('utf-8'))
-                    tmp_path = tmp.name
+            if uploaded_file is not None:
+                try:
+                    # Read and parse JSON
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
+                        tmp.write(uploaded_file.getvalue().decode('utf-8'))
+                        tmp_path = tmp.name
 
-                # Load pipeline
-                new_pipeline = PipelineConfig()
-                new_pipeline.load(tmp_path)
+                    # Load pipeline
+                    new_pipeline = PipelineConfig()
+                    new_pipeline.load(tmp_path)
 
-                # Validate
-                is_valid, errors = new_pipeline.validate()
+                    # Validate
+                    is_valid, errors, warnings = new_pipeline.validate()
 
-                if is_valid:
-                    if st.button("✅ Apply Imported Pipeline", use_container_width=True):
-                        st.session_state.pipeline = new_pipeline
-                        st.success(f"✅ Imported {len(new_pipeline.transforms)} transforms!")
-                        st.rerun()
+                    if is_valid:
+                        # Preview
+                        st.caption(f"**Preview:** {len(new_pipeline.transforms)} transforms")
+                        for t in new_pipeline.transforms[:3]:
+                            st.text(f"• {t['type']}")
+                        if len(new_pipeline.transforms) > 3:
+                            st.text(f"... and {len(new_pipeline.transforms) - 3} more")
 
-                    # Preview
-                    st.caption(f"**Preview:** {len(new_pipeline.transforms)} transforms")
-                    for t in new_pipeline.transforms[:3]:
-                        st.text(f"• {t['type']}")
-                    if len(new_pipeline.transforms) > 3:
-                        st.text(f"... and {len(new_pipeline.transforms) - 3} more")
-                else:
-                    st.error("❌ Invalid pipeline:")
-                    for err in errors:
-                        st.text(f"• {err}")
+                        # Show warnings if any
+                        if warnings:
+                            for warning in warnings:
+                                st.warning(f"⚠️ {warning}")
 
-                # Clean up temp file
-                import os
-                os.unlink(tmp_path)
+                        if st.button("✅ Apply Imported Pipeline", use_container_width=True):
+                            st.session_state.pipeline = new_pipeline
+                            st.session_state.import_success = True
+                            st.session_state.pipeline_imported = True  # Mark as imported
+                            # Clear the uploaded file to prevent recursion issues
+                            if 'pipeline_upload' in st.session_state:
+                                del st.session_state['pipeline_upload']
+                            st.rerun()
+                    else:
+                        st.error("❌ Invalid pipeline:")
+                        for err in errors:
+                            st.text(f"• {err}")
 
-            except Exception as e:
-                st.error(f"❌ Error loading pipeline: {str(e)}")
+                    # Clean up temp file
+                    import os
+                    os.unlink(tmp_path)
+
+                except Exception as e:
+                    st.error(f"❌ Error loading pipeline: {str(e)}")
 
     # Display current pipeline count
     pipeline_count = len(st.session_state.pipeline.transforms)
 
-    # SIMPLIFIED: Just use multiselect - no buttons needed!
-    all_transforms = TransformRegistry.list_all()
-    common_transforms = ["OpticalDistortion", "GridDistortion", "ElasticTransform",
-                        "GaussNoise", "GaussianBlur", "RandomBrightnessContrast"]
+    # Check if pipeline was imported
+    pipeline_was_imported = st.session_state.get('pipeline_imported', False)
 
-    # Get current transform names
-    current_transforms = [t["type"] for t in st.session_state.pipeline.transforms]
+    # Only show manual transform selection if pipeline wasn't imported
+    if not pipeline_was_imported:
+        all_transforms = TransformRegistry.list_all()
+        common_transforms = ["OpticalDistortion", "GridDistortion", "ElasticTransform",
+                            "GaussNoise", "GaussianBlur", "RandomBrightnessContrast"]
 
-    selected_transforms = st.sidebar.multiselect(
-        "Select Transforms (in order)",
-        options=[t for t in common_transforms if t in all_transforms],
-        default=current_transforms if len(current_transforms) <= 6 else [],
-        help="Select one or more transforms. They will be applied in the order shown."
-    )
+        # Get current transform names
+        current_transforms = [t["type"] for t in st.session_state.pipeline.transforms]
 
-    # Rebuild pipeline based on selection
-    if selected_transforms != current_transforms:
-        st.session_state.pipeline.transforms = []
-        for transform_name in selected_transforms:
-            default_params = {"p": 1.0}
-            if transform_name == "OpticalDistortion":
-                default_params.update({"distort_limit": 0.2, "shift_limit": 0.1})
-            elif transform_name == "GridDistortion":
-                default_params.update({"num_steps": 5, "distort_limit": 0.3})
-            elif transform_name == "ElasticTransform":
-                default_params.update({"alpha": 100, "sigma": 10})
-            elif transform_name == "GaussNoise":
-                default_params.update({"var_limit": (10.0, 50.0), "mean": 0})
-            elif transform_name == "GaussianBlur":
-                default_params.update({"blur_limit": (3, 7)})
-            elif transform_name == "RandomBrightnessContrast":
-                default_params.update({"brightness_limit": 0.2, "contrast_limit": 0.2})
+        selected_transforms = st.sidebar.multiselect(
+            "Select Transforms (in order)",
+            options=[t for t in common_transforms if t in all_transforms],
+            default=current_transforms if len(current_transforms) <= 6 else [],
+            help="Select one or more transforms. They will be applied in the order shown."
+        )
 
-            st.session_state.pipeline.add_transform(transform_name, default_params)
+        # Rebuild pipeline based on selection
+        if selected_transforms != current_transforms:
+            st.session_state.pipeline.transforms = []
+            for transform_name in selected_transforms:
+                default_params = {"p": 1.0}
+                if transform_name == "OpticalDistortion":
+                    default_params.update({"distort_limit": 0.2, "shift_limit": 0.1})
+                elif transform_name == "GridDistortion":
+                    default_params.update({"num_steps": 5, "distort_limit": 0.3})
+                elif transform_name == "ElasticTransform":
+                    default_params.update({"alpha": 100, "sigma": 10})
+                elif transform_name == "GaussNoise":
+                    default_params.update({"var_limit": (10.0, 50.0), "mean": 0})
+                elif transform_name == "GaussianBlur":
+                    default_params.update({"blur_limit": (3, 7)})
+                elif transform_name == "RandomBrightnessContrast":
+                    default_params.update({"brightness_limit": 0.2, "contrast_limit": 0.2})
 
+                st.session_state.pipeline.add_transform(transform_name, default_params)
+
+    # Update pipeline count
     pipeline_count = len(st.session_state.pipeline.transforms)
     if pipeline_count > 0:
-        st.sidebar.success(f"✅ {pipeline_count} transform(s) selected")
+        st.sidebar.success(f"✅ {pipeline_count} transform(s) loaded")
+        if pipeline_was_imported:
+            st.sidebar.info("📥 Pipeline imported from JSON")
+            if st.sidebar.button("🔄 Reset to Manual Selection", use_container_width=True):
+                st.session_state.pipeline_imported = False
+                st.session_state.pipeline.transforms = []
+                st.rerun()
 
     # Display and edit transforms
     if st.session_state.pipeline.transforms:
@@ -337,16 +363,33 @@ def render():
         st.info("💡 **Tip:** The progress monitor auto-refreshes every 2 seconds. You can also open it in a [new tab](http://localhost:8502/progress.html) for full-screen view.")
         st.markdown("---")
 
+    # Show warning if Normalize transform is present
+    if st.session_state.pipeline.has_normalize_transform():
+        st.warning(
+            "⚠️ **Warning:** Your pipeline contains the **Normalize** transform.\n\n"
+            "Normalize converts images to [-2, 2] range for neural network input. "
+            "Saved images will appear black when normalized values are clipped to uint8.\n\n"
+            "**Recommendation:** Remove Normalize if you want viewable saved images. "
+            "Normalize should only be used for runtime preprocessing, not for saved data augmentation."
+        )
+
     col1, col2, col3, col4 = st.columns(4)
 
     # Process button
     with col1:
         if st.button("🚀 Process All Images", type="primary", use_container_width=True):
+            print(f"DEBUG: Process button clicked!")
+            print(f"DEBUG: Pipeline has {len(st.session_state.pipeline.transforms)} transforms")
+            print(f"DEBUG: Pipeline imported flag: {st.session_state.get('pipeline_imported', False)}")
+
             if not st.session_state.pipeline.transforms:
+                print(f"DEBUG: Validation failed - no transforms!")
                 st.error("⚠️ Please select at least one transform in the sidebar")
             elif not input_img_path.exists():
+                print(f"DEBUG: Validation failed - input dir doesn't exist!")
                 st.error("Input directory does not exist")
             else:
+                print(f"DEBUG: Starting processing with {len(st.session_state.pipeline.transforms)} transforms")
                 st.warning("⏳ Processing started! Open [Progress Monitor](http://localhost:8502/progress.html) in a new tab to watch live progress.")
 
                 with st.spinner("Processing all images in background..."):
@@ -564,12 +607,12 @@ def render():
                     if pixel_pipeline:
                         aug_img = pixel_pipeline(image=aug_img)["image"]
 
-                    # Display
+                    # Display (clamp values for normalized images)
                     if show_preview_mask and aug_mask is not None:
                         overlay = create_mask_overlay(aug_img, aug_mask)
-                        cols[i].image(overlay, use_column_width=True, caption=f"Variant {i+1}")
+                        cols[i].image(overlay, use_column_width=True, caption=f"Variant {i+1}", clamp=True)
                     else:
-                        cols[i].image(aug_img, use_column_width=True, caption=f"Variant {i+1}")
+                        cols[i].image(aug_img, use_column_width=True, caption=f"Variant {i+1}", clamp=True)
             else:
                 st.info("Add transforms to the pipeline to see preview")
         else:

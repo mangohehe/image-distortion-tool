@@ -102,17 +102,36 @@ class PipelineConfig:
         self.transforms = [transform_dict[tid] for tid in new_order]
         return True
 
-    def validate(self) -> tuple[bool, list[str]]:
+    def has_normalize_transform(self) -> bool:
+        """Check if pipeline contains Normalize transform
+
+        Returns:
+            True if Normalize transform is present
+        """
+        return any(t["type"] == "Normalize" for t in self.transforms)
+
+    def validate(self) -> tuple[bool, list[str], list[str]]:
         """Validate pipeline configuration
 
         Returns:
-            (is_valid, error_messages)
+            (is_valid, error_messages, warning_messages)
         """
         errors = []
+        warnings = []
 
         # Check for transforms
         if not self.transforms:
             errors.append("Pipeline must have at least one transform")
+
+        # Check for Normalize transform (warning, not error)
+        if self.has_normalize_transform():
+            warnings.append(
+                "Pipeline contains Normalize transform. "
+                "Normalize converts images to [-2, 2] range for neural network input. "
+                "Saved images will appear black when normalized values are clipped to uint8. "
+                "Recommendation: Remove Normalize if you want viewable saved images. "
+                "Normalize should only be used for runtime preprocessing, not for saved data augmentation."
+            )
 
         # Validate each transform
         for t in self.transforms:
@@ -124,8 +143,20 @@ class PipelineConfig:
             # Basic parameter validation
             if not isinstance(t["params"], dict):
                 errors.append(f"Transform '{t['type']}' params must be a dict")
+                continue
 
-        return (len(errors) == 0, errors)
+            # Try to instantiate the transform to catch parameter errors
+            try:
+                transform_class = getattr(A, t["type"])
+                _ = transform_class(**t["params"])
+            except TypeError as e:
+                errors.append(f"Transform '{t['type']}' has invalid parameters: {str(e)}")
+            except ValueError as e:
+                errors.append(f"Transform '{t['type']}' has invalid parameter values: {str(e)}")
+            except Exception as e:
+                errors.append(f"Transform '{t['type']}' initialization failed: {str(e)}")
+
+        return (len(errors) == 0, errors, warnings)
 
     def to_dict(self) -> dict:
         """Export to JSON-serializable dict"""
@@ -178,10 +209,11 @@ class PipelineConfig:
                 class_name = class_name.split(".")[-1]
 
             # Extract params (exclude metadata fields)
+            # Keep params exactly as specified in config (lists stay as lists)
             params = {k: v for k, v in t.items()
                      if k not in ["__class_fullname__", "always_apply"]}
 
-            # Add transform
+            # Add transform (params stored exactly as imported)
             self.add_transform(class_name, params)
 
     def build_albumentations_pipeline(self) -> tuple[Optional[A.Compose], Optional[A.Compose]]:
@@ -189,6 +221,9 @@ class PipelineConfig:
 
         Returns:
             (geometric_pipeline, pixel_pipeline)
+
+        Note: Parameters are passed exactly as specified in the config.
+        If Albumentations fails to instantiate a transform, the error will be reported.
         """
         geometric_transforms = []
         pixel_transforms = []
@@ -196,6 +231,7 @@ class PipelineConfig:
         for t in self.transforms:
             try:
                 transform_class = getattr(A, t["type"])
+                # Pass params exactly as specified in config (100% config fidelity)
                 transform_instance = transform_class(**t["params"])
 
                 if t["category"] == "geometric":
@@ -203,7 +239,12 @@ class PipelineConfig:
                 else:
                     pixel_transforms.append(transform_instance)
             except Exception as e:
-                print(f"Warning: Failed to build transform {t['type']}: {e}")
+                # Report config compatibility issue to user
+                print(f"ERROR: Transform '{t['type']}' failed to instantiate with provided parameters.")
+                print(f"  Config parameters: {t['params']}")
+                print(f"  Albumentations error: {e}")
+                print(f"  This is likely a config compatibility issue. Please check the transform parameters in your pipeline.")
+                raise ValueError(f"Transform '{t['type']}' configuration is incompatible with Albumentations: {e}")
 
         geometric_pipeline = A.Compose(geometric_transforms) if geometric_transforms else None
         pixel_pipeline = A.Compose(pixel_transforms) if pixel_transforms else None

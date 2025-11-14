@@ -13,6 +13,7 @@ A Docker-based tool for applying image transformations (distortions) to images w
 ✅ **Editable Parameters** - Adjust transform parameters directly in the UI
 ✅ **Results Viewer** - Compare original vs distorted images side-by-side
 ✅ **Stop Processing** - Gracefully cancel long-running jobs
+✅ **Config Fidelity** - Applies transforms exactly as specified (see [CONFIG_FIDELITY.md](CONFIG_FIDELITY.md))
 
 ## Quick Start
 
