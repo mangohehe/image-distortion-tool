@@ -6,6 +6,7 @@ A Docker-based tool for applying image transformations (distortions) to images w
 
 ✅ **Intuitive Web UI** - Streamlit-based interface
 ✅ **50+ Transform Types** - Geometric & pixel-level distortions via Albumentations
+✅ **Pipeline Import** - Load Albumentations JSON pipelines directly
 ✅ **Mask Synchronization** - Geometric transforms applied to both images and masks
 ✅ **Multiple Variants** - Generate 1-10 variants per image with different random seeds
 ✅ **Live Progress Monitoring** - Real-time progress tracking via separate monitor page
@@ -41,14 +42,24 @@ Access the UI at:
 
 ### 1. Configuration & Processing
 
+#### Option A: Build Pipeline Manually
 1. Navigate to **Configuration & Processing** page
 2. Select transforms from the **Pipeline Builder** multiselect
 3. (Optional) Expand transforms in sidebar to adjust parameters:
    - `p` (probability) - Slider from 0.0 to 1.0
    - Numeric parameters - Adjustable via number inputs
    - Range parameters [min, max] - Two-column inputs
-4. Click **🚀 Process All Images**
-5. Monitor progress at http://localhost:8502/progress.html
+
+#### Option B: Import Pipeline from JSON
+1. Navigate to **Configuration & Processing** page
+2. Expand **📥 Import Pipeline** in sidebar
+3. Upload an Albumentations JSON file (supports native format)
+4. Preview the transforms
+5. Click **✅ Apply Imported Pipeline**
+
+#### Process Images
+1. Click **🚀 Process All Images**
+2. Monitor progress at http://localhost:8502/progress.html
 
 ### 2. View Results
 

@@ -122,6 +122,54 @@ def render():
         st.session_state.pipeline = PipelineConfig()
         st.session_state.pipeline.metadata["name"] = "My Pipeline"
 
+    # Import pipeline from JSON
+    with st.sidebar.expander("📥 Import Pipeline", expanded=False):
+        uploaded_file = st.file_uploader(
+            "Upload Albumentations JSON",
+            type=['json'],
+            help="Upload an Albumentations pipeline JSON file (supports both native format and custom format)",
+            key="pipeline_upload"
+        )
+
+        if uploaded_file is not None:
+            try:
+                # Read and parse JSON
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
+                    tmp.write(uploaded_file.getvalue().decode('utf-8'))
+                    tmp_path = tmp.name
+
+                # Load pipeline
+                new_pipeline = PipelineConfig()
+                new_pipeline.load(tmp_path)
+
+                # Validate
+                is_valid, errors = new_pipeline.validate()
+
+                if is_valid:
+                    if st.button("✅ Apply Imported Pipeline", use_container_width=True):
+                        st.session_state.pipeline = new_pipeline
+                        st.success(f"✅ Imported {len(new_pipeline.transforms)} transforms!")
+                        st.rerun()
+
+                    # Preview
+                    st.caption(f"**Preview:** {len(new_pipeline.transforms)} transforms")
+                    for t in new_pipeline.transforms[:3]:
+                        st.text(f"• {t['type']}")
+                    if len(new_pipeline.transforms) > 3:
+                        st.text(f"... and {len(new_pipeline.transforms) - 3} more")
+                else:
+                    st.error("❌ Invalid pipeline:")
+                    for err in errors:
+                        st.text(f"• {err}")
+
+                # Clean up temp file
+                import os
+                os.unlink(tmp_path)
+
+            except Exception as e:
+                st.error(f"❌ Error loading pipeline: {str(e)}")
+
     # Display current pipeline count
     pipeline_count = len(st.session_state.pipeline.transforms)
 

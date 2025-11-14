@@ -1,0 +1,74 @@
+{
+  "__version__": "2.0.3",
+  "transform": {
+    "__class_fullname__": "albumentations.core.composition.Compose",
+    "p": 1.0,
+    "transforms": [
+      {
+        "__class_fullname__": "HorizontalFlip",
+        "always_apply": false,
+        "p": 0.5
+      },
+      {
+        "__class_fullname__": "VerticalFlip",
+        "always_apply": false,
+        "p": 0.5
+      },
+      {
+        "__class_fullname__": "ShiftScaleRotate",
+        "always_apply": false,
+        "p": 0.3,
+        "shift_limit": 0.0625,
+        "scale_limit": 0.1,
+        "rotate_limit": 15,
+        "interpolation": 1,
+        "border_mode": 0,
+        "value": null,
+        "mask_value": null
+      },
+      {
+        "__class_fullname__": "ColorJitter",
+        "always_apply": false,
+        "p": 0.5,
+        "brightness": 0.2,
+        "contrast": 0.2,
+        "saturation": 0.2,
+        "hue": 0.1
+      },
+      {
+        "__class_fullname__": "GaussNoise",
+        "always_apply": false,
+        "p": 0.2,
+        "var_limit": [10.0, 50.0],
+        "mean": 0,
+        "per_channel": true
+      },
+      {
+        "__class_fullname__": "GaussianBlur",
+        "always_apply": false,
+        "p": 0.2,
+        "blur_limit": [3, 5],
+        "sigma_limit": 0
+      },
+      {
+        "__class_fullname__": "Resize",
+        "always_apply": true,
+        "p": 1.0,
+        "height": 640,
+        "width": 640,
+        "interpolation": 1
+      },
+      {
+        "__class_fullname__": "Normalize",
+        "always_apply": false,
+        "p": 1.0,
+        "mean": [0.485, 0.456, 0.406],
+        "std": [0.229, 0.224, 0.225],
+        "max_pixel_value": 255.0
+      }
+    ],
+    "bbox_params": null,
+    "keypoint_params": null,
+    "additional_targets": {}
+  }
+}
